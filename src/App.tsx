@@ -19,6 +19,8 @@ import type { Note, ColumnId } from './types';
 import Column from './components/Column';
 import TaskModal from './components/TaskModal';
 import SortableTask from './components/SortableTask';
+import LoginPage from './components/LoginPage';
+import ConfirmDialog from './components/ConfirmDialog';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3009/api/v1';
 
@@ -29,6 +31,8 @@ const COLUMNS: { id: ColumnId; title: string; colorVar: string }[] = [
 ];
 
 function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
 
@@ -36,6 +40,14 @@ function App() {
   const [showModal, setShowModal] = useState(false);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [activeDefaultColumn, setActiveDefaultColumn] = useState<ColumnId>('todo');
+
+  // Confirmation state
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+  const [noteToDelete, setNoteToDelete] = useState<number | null>(null);
+
+  const [showConfirmUpdate, setShowConfirmUpdate] = useState(false);
+  const [pendingUpdate, setPendingUpdate] = useState<{ id: number, nextStatus: ColumnId, nextName?: string } | null>(null);
+  const [startStatus, setStartStatus] = useState<ColumnId | null>(null);
 
   const fetchNotes = async () => {
     try {
@@ -50,8 +62,25 @@ function App() {
   };
 
   useEffect(() => {
+    const savedEmail = localStorage.getItem('user_session');
+    if (savedEmail) {
+      setIsLoggedIn(true);
+      setUserEmail(savedEmail);
+    }
     fetchNotes();
   }, []);
+
+  const handleLogin = (email: string) => {
+    localStorage.setItem('user_session', email);
+    setIsLoggedIn(true);
+    setUserEmail(email);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('user_session');
+    setIsLoggedIn(false);
+    setUserEmail(null);
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -65,7 +94,13 @@ function App() {
   );
 
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(Number(event.active.id));
+    const activeId = Number(event.active.id);
+    setActiveId(activeId);
+    
+    const activeItem = notes.find(n => n.id === activeId);
+    if (activeItem) {
+      setStartStatus(activeItem.status);
+    }
   };
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -94,6 +129,7 @@ function App() {
           newNotes[activeIndex] = {
             ...newNotes[activeIndex],
             status: notes[overIndex].status,
+            date_updated: new Date().toISOString()
           };
           return arrayMove(newNotes, activeIndex, overIndex);
         }
@@ -113,6 +149,7 @@ function App() {
           newNotes[activeIndex] = {
             ...newNotes[activeIndex],
             status: overColumnId,
+            date_updated: new Date().toISOString()
           };
           return newNotes;
         }
@@ -125,35 +162,25 @@ function App() {
   const handleDragEnd = async (event: DragEndEvent) => {
     setActiveId(null);
     const { active, over } = event;
-    if (!over) return;
+    if (!over) {
+      setStartStatus(null);
+      return;
+    }
 
     const activeIdNum = Number(active.id);
     const overIdRaw = over.id;
 
-    // We already optimistically updated the status in handleDragOver if needed
-    // However, we want to hit the API with the new status of this card if it changed
     if (active.data.current?.type === 'Task') {
       const activeItem = notes.find((t) => t.id === activeIdNum);
-      if (activeItem) {
-        // Find what standard column we settled in
+      if (activeItem && startStatus) {
         const newStatus = activeItem.status;
-        const oldStatus = active.data.current?.note.status;
 
-        // If status actually changed or position changed, we can update in backend
-        if (newStatus !== oldStatus) {
-          try {
-            await fetch(`${API_BASE_URL}/notes/${activeIdNum}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: activeItem.name, status: newStatus })
-            });
-          } catch (err) {
-            console.error('Failed to update note status', err);
-            // Optimally we'd revert the state here, but re-fetching works as a fallback
-            fetchNotes();
-          }
+        if (newStatus !== startStatus) {
+          setPendingUpdate({ id: activeIdNum, nextStatus: newStatus, nextName: activeItem.name });
+          setShowConfirmUpdate(true);
         }
       }
+      setStartStatus(null);
 
       // array moves
       if (active.id !== overIdRaw) {
@@ -183,35 +210,73 @@ function App() {
     setShowModal(true);
   };
 
-  const handleDeleteNote = async (id: number) => {
+  const handleDeleteNote = (id: number) => {
+    setNoteToDelete(id);
+    setShowConfirmDelete(true);
+  };
+
+  const confirmDeleteNote = async () => {
+    if (!noteToDelete) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/notes/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE_URL}/notes/${noteToDelete}`, { method: 'DELETE' });
       if (res.ok) {
-        setNotes((prev) => prev.filter((note) => note.id !== id));
+        setNotes((prev) => prev.filter((note) => note.id !== noteToDelete));
       }
     } catch (err) {
       console.error('Failed to delete note', err);
     }
+    setShowConfirmDelete(false);
+  };
+
+  const confirmStatusUpdate = async () => {
+    if (!pendingUpdate) return;
+    const { id, nextStatus, nextName } = pendingUpdate;
+    const note = notes.find(n => n.id === id);
+    if (!note) return;
+
+    try {
+      await fetch(`${API_BASE_URL}/notes/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: nextName || note.name,
+          status: nextStatus,
+          date_updated: new Date().toISOString()
+        })
+      });
+      setNotes((prev) => prev.map(n => n.id === id ? { 
+        ...n, 
+        status: nextStatus, 
+        name: nextName || n.name,
+        date_updated: new Date().toISOString() 
+      } : n));
+      fetchNotes(); 
+    } catch (err) {
+      console.error('Failed to update status', err);
+      fetchNotes(); 
+    }
+    setShowConfirmUpdate(false);
   };
 
   const handleSaveNote = async (noteData: Partial<Note>) => {
     if (editingNote) {
-      try {
-        const res = await fetch(`${API_BASE_URL}/notes/${editingNote.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: noteData.name, status: noteData.status })
-        });
-        if (res.ok) {
-          fetchNotes();
-        }
-      } catch (err) { console.error(err); }
+      setPendingUpdate({ 
+        id: editingNote.id, 
+        nextStatus: noteData.status as ColumnId, 
+        nextName: noteData.name 
+      });
+      setShowConfirmUpdate(true);
     } else {
       try {
         const res = await fetch(`${API_BASE_URL}/notes`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: noteData.name, status: noteData.status })
+          body: JSON.stringify({
+            name: noteData.name,
+            status: noteData.status,
+            date_created: new Date().toISOString(),
+            date_updated: new Date().toISOString()
+          })
         });
         if (res.ok) {
           fetchNotes();
@@ -221,6 +286,10 @@ function App() {
     setShowModal(false);
   };
 
+  if (!isLoggedIn) {
+    return <LoginPage onLogin={handleLogin} apiUrl={API_BASE_URL} />;
+  }
+
   return (
     <div className="kanban-container">
       <header className="kanban-header">
@@ -228,11 +297,19 @@ function App() {
           <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
             <i className="bi bi-kanban" style={{ fontSize: '1.2rem' }}></i>
           </div>
-          <h1>Todo List</h1>
+          <div className="d-flex flex-column">
+            <h1 className="h4 mb-0">Todo List</h1>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{userEmail}</span>
+          </div>
         </div>
-        <button className="btn-primary-custom px-3 py-2" onClick={() => handleAddNote('todo')}>
-          <i className="bi bi-plus-lg"></i> Create Note
-        </button>
+        <div className="d-flex gap-2">
+          <button className="btn-primary-custom px-3 py-2" onClick={() => handleAddNote('todo')}>
+            <i className="bi bi-plus-lg"></i> Create Note
+          </button>
+          <button className="btn-icon" onClick={handleLogout} title="Logout" style={{ height: 'auto', padding: '0.5rem 0.75rem' }}>
+            <i className="bi bi-box-arrow-right"></i>
+          </button>
+        </div>
       </header>
 
       <main className="kanban-board">
@@ -250,7 +327,6 @@ function App() {
               title={col.title}
               colorVar={col.colorVar}
               notes={notes.filter((n) => n.status === col.id)}
-              onAdd={handleAddNote}
               onEdit={handleEditNote}
               onDelete={handleDeleteNote}
             />
@@ -274,6 +350,25 @@ function App() {
         onSave={handleSaveNote}
         note={editingNote}
         defaultColumnId={activeDefaultColumn}
+      />
+      <ConfirmDialog
+        show={showConfirmDelete}
+        title="Delete Note?"
+        message="This action cannot be undone. Are you sure you want to delete this note?"
+        variant="danger"
+        onHide={() => setShowConfirmDelete(false)}
+        onConfirm={confirmDeleteNote}
+      />
+
+      <ConfirmDialog
+        show={showConfirmUpdate}
+        title="Update Status?"
+        message={`Move task to "${COLUMNS.find(c => c.id === pendingUpdate?.nextStatus)?.title}" column?`}
+        onHide={() => {
+          setShowConfirmUpdate(false);
+          fetchNotes(); 
+        }}
+        onConfirm={confirmStatusUpdate}
       />
     </div>
   );

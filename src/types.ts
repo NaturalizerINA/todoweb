@@ -4,6 +4,8 @@ export interface Note {
   id: number;
   name: string;
   status: ColumnId;
+  date_created?: string;
+  date_updated?: string;
 }
 
 export interface BoardData {
