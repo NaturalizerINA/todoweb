@@ -286,6 +286,50 @@ function App() {
     setShowModal(false);
   };
 
+  const handleAddSubtask = async (noteId: number, title: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/subtasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note_id: noteId, title })
+      });
+      if (res.ok) {
+        // Refresh notes to get updated subtasks list
+        const updated = await res.json();
+        // Optimistically update the editingNote if it's the one we're adding to
+        if (editingNote && editingNote.id === noteId) {
+          setEditingNote(prev => prev ? {
+            ...prev,
+            subtasks: [...(prev.subtasks || []), updated.data]
+          } : null);
+        }
+        fetchNotes();
+      }
+    } catch (err) {
+      console.error('Failed to add subtask', err);
+    }
+  };
+
+  const handleToggleSubtask = async (subtaskId: number) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/subtasks/${subtaskId}/toggle`, {
+        method: 'PATCH'
+      });
+      if (res.ok) {
+        // Update local state for immediate feedback
+        if (editingNote) {
+          setEditingNote(prev => prev ? {
+            ...prev,
+            subtasks: prev.subtasks?.map(s => s.id === subtaskId ? { ...s, is_completed: !s.is_completed } : s)
+          } : null);
+        }
+        fetchNotes();
+      }
+    } catch (err) {
+      console.error('Failed to toggle subtask', err);
+    }
+  };
+
   if (!isLoggedIn) {
     return <LoginPage onLogin={handleLogin} apiUrl={API_BASE_URL} />;
   }
@@ -348,6 +392,8 @@ function App() {
         show={showModal}
         onHide={() => setShowModal(false)}
         onSave={handleSaveNote}
+        onAddSubtask={handleAddSubtask}
+        onToggleSubtask={handleToggleSubtask}
         note={editingNote}
         defaultColumnId={activeDefaultColumn}
       />

@@ -31,9 +31,30 @@ const SortableTask = ({ note, onEdit, onDelete }: SortableTaskProps) => {
       {...attributes}
       {...listeners}
     >
-      <div className="task-header">
+      <div className="task-header mb-1">
         <h3 className="task-title">{note.name}</h3>
       </div>
+
+      {note.subtasks && note.subtasks.length > 0 && (
+        <div className="subtask-progress mt-2 mb-2">
+          <div className="d-flex justify-content-between align-items-center mb-1">
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+              <i className="bi bi-list-check me-1"></i>
+              {note.subtasks.filter(s => s.is_completed).length}/{note.subtasks.length} Subtasks
+            </span>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+              {Math.round((note.subtasks.filter(s => s.is_completed).length / note.subtasks.length) * 100)}%
+            </span>
+          </div>
+          <div className="progress" style={{ height: '4px', backgroundColor: 'rgba(255,255,255,0.05)' }}>
+            <div 
+              className="progress-bar bg-success" 
+              role="progressbar" 
+              style={{ width: `${(note.subtasks.filter(s => s.is_completed).length / note.subtasks.length) * 100}%` }}
+            ></div>
+          </div>
+        </div>
+      )}
 
       <div className="task-footer mt-2 d-flex justify-content-between align-items-center w-100">
         <div className="task-date w-100 d-flex justify-content-between align-items-center">
