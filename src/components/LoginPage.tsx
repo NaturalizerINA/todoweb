@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Form, Button, Alert, Card } from 'react-bootstrap';
+import { Form, Button, Alert, Card, InputGroup } from 'react-bootstrap';
 
 interface LoginPageProps {
   onLogin: (email: string) => void;
@@ -12,26 +12,33 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, apiUrl }) => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
+    const endpoint = isRegistering ? 'register' : 'login';
+
     try {
-      const res = await fetch(`${apiUrl}/login`, {
+      const res = await fetch(`${apiUrl}/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
 
+      const data = await res.json().catch(() => ({ message: 'Invalid server response' }));
+
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ message: 'Invalid credentials' }));
-        throw new Error(data.message || 'Login failed');
+        throw new Error(data.message || `${isRegistering ? 'Registration' : 'Login'} failed`);
       }
 
       // Success
-      await res.json();
+      console.log(`${endpoint} successful`, data);
+      
+      // If the API returns a token/user in data.data, we could use it here
+      // For now, mirroring existing behavior of just passing email
       onLogin(email);
     } catch (err: any) {
       setError(err.message || 'Failed to connect to server. Check your connection.');
@@ -69,14 +76,33 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, apiUrl }) => {
 
             <Form.Group className="mb-4" controlId="formBasicPassword">
               <Form.Label className="form-label">Password</Form.Label>
-              <Form.Control 
-                type="password" 
-                placeholder="Password" 
-                className="form-control"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+              <div className="position-relative">
+                <Form.Control 
+                  type={showPassword ? "text" : "password"} 
+                  placeholder="Password" 
+                  className="form-control"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  style={{ paddingRight: '45px' }}
+                />
+                <Button 
+                  variant="link" 
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="position-absolute end-0 top-50 translate-middle-y text-decoration-none"
+                  style={{ 
+                    color: 'var(--text-muted)',
+                    padding: '0 15px',
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    border: 'none',
+                    zIndex: 10
+                  }}
+                >
+                  <i className={`bi ${showPassword ? 'bi-eye-slash' : 'bi-eye'}`} style={{ fontSize: '1.2rem' }}></i>
+                </Button>
+              </div>
             </Form.Group>
 
             <Button 
