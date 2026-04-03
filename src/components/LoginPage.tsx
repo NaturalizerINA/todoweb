@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Form, Button, Alert, Card, InputGroup } from 'react-bootstrap';
+import { Form, Button, Alert, Card } from 'react-bootstrap';
 
 interface LoginPageProps {
   onLogin: (email: string) => void;
@@ -40,8 +40,9 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, apiUrl }) => {
       // If the API returns a token/user in data.data, we could use it here
       // For now, mirroring existing behavior of just passing email
       onLogin(email);
-    } catch (err: any) {
-      setError(err.message || 'Failed to connect to server. Check your connection.');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to connect to server. Check your connection.';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
