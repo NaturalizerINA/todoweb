@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -33,6 +33,7 @@ const COLUMNS: { id: ColumnId; title: string; colorVar: string }[] = [
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem('user_session'));
   const [userEmail, setUserEmail] = useState<string | null>(() => localStorage.getItem('user_session'));
+  const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem('auth_token'));
   const [notes, setNotes] = useState<Note[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
 
@@ -49,32 +50,62 @@ function App() {
   const [pendingUpdate, setPendingUpdate] = useState<{ id: number, nextStatus: ColumnId, nextName?: string } | null>(null);
   const [startStatus, setStartStatus] = useState<ColumnId | null>(null);
 
-  const fetchNotes = async () => {
+  const getNotesData = useCallback(async () => {
+    const token = authToken || localStorage.getItem('auth_token');
+    if (!token) return null;
+
     try {
-      const res = await fetch(`${API_BASE_URL}/notes`);
+      const res = await fetch(`${API_BASE_URL}/notes`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       if (res.ok) {
-        const data = await res.json();
-        setNotes(Array.isArray(data) ? data : data.data || []);
+        return await res.json();
       }
     } catch (err) {
       console.error('Failed to fetch notes:', err);
     }
-  };
+    return null;
+  }, [authToken]);
+
+  const fetchNotes = useCallback(async () => {
+    const data = await getNotesData();
+    if (data) {
+      setNotes(Array.isArray(data) ? data : data.data || []);
+    }
+  }, [getNotesData]);
 
   useEffect(() => {
-    fetchNotes();
-  }, []);
+    let ignore = false;
 
-  const handleLogin = (email: string) => {
+    if (isLoggedIn && authToken) {
+      getNotesData().then(data => {
+        if (!ignore && data) {
+          setNotes(Array.isArray(data) ? data : data.data || []);
+        }
+      });
+    }
+
+    return () => {
+      ignore = true;
+    };
+  }, [isLoggedIn, authToken, getNotesData]);
+
+  const handleLogin = (email: string, token: string) => {
     localStorage.setItem('user_session', email);
+    localStorage.setItem('auth_token', token);
     setIsLoggedIn(true);
     setUserEmail(email);
+    setAuthToken(token);
+    // No need for setTimeout/fetchNotes here, the useEffect will trigger automatically
   };
 
   const handleLogout = () => {
     localStorage.removeItem('user_session');
+    localStorage.removeItem('auth_token');
     setIsLoggedIn(false);
     setUserEmail(null);
+    setAuthToken(null);
+    setNotes([]);
   };
 
   const sensors = useSensors(
@@ -213,7 +244,10 @@ function App() {
   const confirmDeleteNote = async () => {
     if (!noteToDelete) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/notes/${noteToDelete}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE_URL}/notes/${noteToDelete}`, { 
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
       if (res.ok) {
         setNotes((prev) => prev.filter((note) => note.id !== noteToDelete));
       }
@@ -232,7 +266,10 @@ function App() {
     try {
       await fetch(`${API_BASE_URL}/notes/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
         body: JSON.stringify({
           name: nextName || note.name,
           status: nextStatus,
@@ -257,7 +294,10 @@ function App() {
     try {
       await fetch(`${API_BASE_URL}/notes/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
         body: JSON.stringify({
           name: name,
           status: status,
@@ -297,7 +337,10 @@ function App() {
       try {
         const res = await fetch(`${API_BASE_URL}/notes`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
           body: JSON.stringify({
             name: noteData.name,
             status: noteData.status,
@@ -317,7 +360,10 @@ function App() {
     try {
       const res = await fetch(`${API_BASE_URL}/subtasks`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
         body: JSON.stringify({ note_id: noteId, title })
       });
       if (res.ok) {
@@ -340,7 +386,8 @@ function App() {
   const handleToggleSubtask = async (subtaskId: number) => {
     try {
       const res = await fetch(`${API_BASE_URL}/subtasks/${subtaskId}/toggle`, {
-        method: 'PATCH'
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${authToken}` }
       });
       if (res.ok) {
         // Update local state for immediate feedback
@@ -360,7 +407,8 @@ function App() {
   const handleDeleteSubtask = async (subtaskId: number) => {
     try {
       const res = await fetch(`${API_BASE_URL}/subtasks/${subtaskId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${authToken}` }
       });
       if (res.ok) {
         // Update local state for immediate feedback
