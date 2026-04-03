@@ -253,14 +253,46 @@ function App() {
     setShowConfirmUpdate(false);
   };
 
+  const performNoteUpdate = async (id: number, name: string, status: ColumnId) => {
+    try {
+      await fetch(`${API_BASE_URL}/notes/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name,
+          status: status,
+          date_updated: new Date().toISOString()
+        })
+      });
+      setNotes((prev) => prev.map(n => n.id === id ? { 
+        ...n, 
+        status: status, 
+        name: name,
+        date_updated: new Date().toISOString() 
+      } : n));
+      fetchNotes(); 
+    } catch (err) {
+      console.error('Failed to update note', err);
+      fetchNotes(); 
+    }
+  };
+
   const handleSaveNote = async (noteData: Partial<Note>) => {
     if (editingNote) {
-      setPendingUpdate({ 
-        id: editingNote.id, 
-        nextStatus: noteData.status as ColumnId, 
-        nextName: noteData.name 
-      });
-      setShowConfirmUpdate(true);
+      const nextStatus = noteData.status as ColumnId;
+      const nextName = noteData.name || editingNote.name;
+
+      if (editingNote.status !== nextStatus) {
+        setPendingUpdate({ 
+          id: editingNote.id, 
+          nextStatus: nextStatus, 
+          nextName: nextName 
+        });
+        setShowConfirmUpdate(true);
+      } else {
+        // Status remains the same, just update name immediately
+        await performNoteUpdate(editingNote.id, nextName, editingNote.status);
+      }
     } else {
       try {
         const res = await fetch(`${API_BASE_URL}/notes`, {

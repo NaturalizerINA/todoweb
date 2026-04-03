@@ -112,6 +112,7 @@ const TaskModal = ({
                           {sh.title}
                         </span>
                         <button 
+                          type="button"
                           className="btn-icon delete ms-auto" 
                           onClick={() => onDeleteSubtask?.(sh.id)}
                           title="Delete subtask"
@@ -131,7 +132,7 @@ const TaskModal = ({
                     onChange={(e: ChangeEvent<HTMLInputElement>) => setNewSubtask(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddSubtask())}
                   />
-                  <Button variant="outline-primary" onClick={handleAddSubtask}>
+                  <Button type="button" variant="outline-primary" onClick={handleAddSubtask}>
                     <i className="bi bi-plus"></i>
                   </Button>
                 </InputGroup>
