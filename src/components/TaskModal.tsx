@@ -8,6 +8,7 @@ interface TaskModalProps {
   onSave: (note: Partial<Note>) => void;
   onAddSubtask?: (noteId: number, title: string) => void;
   onToggleSubtask?: (subtaskId: number) => void;
+  onDeleteSubtask?: (subtaskId: number) => void;
   note?: Note | null;
   defaultColumnId?: ColumnId;
 }
@@ -18,6 +19,7 @@ const TaskModal = ({
   onSave, 
   onAddSubtask,
   onToggleSubtask,
+  onDeleteSubtask,
   note, 
   defaultColumnId = 'todo' 
 }: TaskModalProps) => {
@@ -109,6 +111,13 @@ const TaskModal = ({
                         }}>
                           {sh.title}
                         </span>
+                        <button 
+                          className="btn-icon delete ms-auto" 
+                          onClick={() => onDeleteSubtask?.(sh.id)}
+                          title="Delete subtask"
+                        >
+                          <i className="bi bi-trash" style={{ fontSize: '0.85rem' }}></i>
+                        </button>
                       </div>
                     ))
                   ) : (

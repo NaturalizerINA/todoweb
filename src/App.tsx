@@ -31,8 +31,8 @@ const COLUMNS: { id: ColumnId; title: string; colorVar: string }[] = [
 ];
 
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem('user_session'));
+  const [userEmail, setUserEmail] = useState<string | null>(() => localStorage.getItem('user_session'));
   const [notes, setNotes] = useState<Note[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
 
@@ -62,11 +62,6 @@ function App() {
   };
 
   useEffect(() => {
-    const savedEmail = localStorage.getItem('user_session');
-    if (savedEmail) {
-      setIsLoggedIn(true);
-      setUserEmail(savedEmail);
-    }
     fetchNotes();
   }, []);
 
@@ -330,6 +325,26 @@ function App() {
     }
   };
 
+  const handleDeleteSubtask = async (subtaskId: number) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/subtasks/${subtaskId}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        // Update local state for immediate feedback
+        if (editingNote) {
+          setEditingNote(prev => prev ? {
+            ...prev,
+            subtasks: prev.subtasks?.filter(s => s.id !== subtaskId)
+          } : null);
+        }
+        fetchNotes();
+      }
+    } catch (err) {
+      console.error('Failed to delete subtask', err);
+    }
+  };
+
   if (!isLoggedIn) {
     return <LoginPage onLogin={handleLogin} apiUrl={API_BASE_URL} />;
   }
@@ -394,6 +409,7 @@ function App() {
         onSave={handleSaveNote}
         onAddSubtask={handleAddSubtask}
         onToggleSubtask={handleToggleSubtask}
+        onDeleteSubtask={handleDeleteSubtask}
         note={editingNote}
         defaultColumnId={activeDefaultColumn}
       />
